@@ -227,3 +227,10 @@ miscls <- (fn_lda+fp_lda)/(tp_lda+fp_lda+tn_lda+fn_lda)
 precision <- tp_lda/(tp_lda+fp_lda)
 recall <- tp_lda/(tp_lda+fn_lda)
 f1 <- 2*(precision*recall)/(precision+recall)
+
+celltypenames <- array(c("AT1", "B_Cells", "Basal", "Fibroblasts", "Mast_Cells"))
+
+boxplot(f1, main = "Fi values for classes for LDA",  names =celltypenames)
+boxplot(miscls, main = "Misclassification values for classes for LDA", names  = celltypenames)
+boxplot(precision, main = "Precision values for classes for LDA", names = celltypenames)
+boxplot(recall, main = "Recall values for classes for LDA", names = celltypenames)
