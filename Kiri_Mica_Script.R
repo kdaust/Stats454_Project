@@ -1,5 +1,9 @@
 ##Midterm Project R script
 ##Mica Grant-Hagen, Kiri Daust
+##Note: we adapted the genetic algorithm code from https://towardsdatascience.com/feature-selection-using-genetic-algorithms-in-r-3d9252f1aa66
+##This script will take a long time to run as the genetic algorithm is computationally intensive
+
+
 library(data.table)
 library(tidyverse)
 library(caret)
@@ -26,10 +30,11 @@ preds <- preds[,-temp[,1]]
 cond <- dat$condt
 cond <- fifelse(cond == "Control",0,1)
 preds <- cbind(cond, preds)
+save(preds,file = "CleanedFeatures.RData")
 
 ##usually just start here
 outcome <- as.factor(dat$celltype)
-#load("CleanedFeatures.RData")
+load("CleanedFeatures.RData")
 ##use random forest to cut down variables
 set.seed(0)
 rf1 <- ranger(x = preds, y = outcome,num.trees = 501,importance = "impurity")
@@ -71,8 +76,6 @@ calc_fitness <- function(vars, data_x, data_y){
     diff <- pred == YTest
     acc[i] <- length(diff[diff])/length(diff)
   }
-  # time for your magic
-  #fitness_value=roc_value/q_vars
   
   return(mean(acc))
 }
@@ -82,10 +85,6 @@ data_y <- outcome
 # GA parameters
 param_nBits=ncol(data_x)
 col_names=colnames(data_x)
-
-# initial_names <- names(varImp[varImp > 5])
-# initial <- fifelse(col_names %in% initial_names, 1,0)
-# ititial <- matrix(data = initial, nrow = 1)
 
 ga_1 <- ga(fitness = function(vars) calc_fitness(vars = vars, 
                                                  data_x =  data_x, 
@@ -98,10 +97,10 @@ ga_1 <- ga(fitness = function(vars) calc_fitness(vars = vars,
            nBits = param_nBits, # total number of variables
            names=col_names, # variable name
            run=20, # max iter without improvement (stopping criteria)
+           monitor = plot,
            maxiter = 50, # total runs or generations
-           monitor = plot, # plot the result at each iteration
            keepBest = TRUE, # keep the best solution at the end
-           parallel = F # allow parallel procesing
+           parallel = T# allow parallel procesing
 )
 
 vars <- ga_1@solution
@@ -248,6 +247,7 @@ boxplot(recall, main = "Recall", names = celltypenames, las = 1)
 ### LDA
 ##########################################################
 ##Genetic Algorithm for lda
+
 calc_fitness <- function(vars, data_x, data_y){
   cvFold <- createFolds(y = data_y, k = 3, list = F)
   varNames <- colnames(data_x)
@@ -270,7 +270,8 @@ calc_fitness <- function(vars, data_x, data_y){
   return(mean(acc))
 }
 
-data_x <- preds
+toUse <- names(varImp[varImp > 1]) ##importance cutoff - kind of arbitrary
+data_x <- preds[,toUse]
 data_y <- outcome
 # GA parameters
 param_nBits=ncol(data_x)
@@ -484,3 +485,18 @@ boxplot(f1, main = "Fi values for classes for KNN",  names =celltypenames)
 boxplot(miscls, main = "Misclassification values for classes for KNN", names  = celltypenames)
 boxplot(precision, main = "Precision values for classes for KNN", names = celltypenames)
 boxplot(recall, main = "Recall values for classes for KNN", names = celltypenames)
+
+####compare all models
+##comp mods
+bayesDat <- allBayes[,.(Acc = mean(Acc)), by = .(Rep)]
+bayesDat[,Model := "Naive Bayes"]
+enetDat <- allEnet[,.(Acc = mean(Acc)), by = .(Rep)]
+enetDat[,Model := "Elastic Net"]
+ldaDat <- allLDA[,.(Acc = mean(Acc)), by = .(Rep)]
+ldaDat[,Model := "LDA"]
+knnDat <- allKNN[,.(Acc = mean(Acc)), by = .(Rep)]
+knnDat[,Model := "KNN"]
+
+modsComb <- rbind(bayesDat,enetDat,ldaDat,knnDat)
+modsComb[,Model := factor(Model,levels = c("Elastic Net","Naive Bayes","LDA","KNN"))]
+boxplot(Acc ~ Model, data = modsComb, ylab = "Mean Accuracy")

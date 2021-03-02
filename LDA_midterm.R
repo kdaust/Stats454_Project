@@ -29,7 +29,9 @@ preds <- cbind(cond, preds)
 ##usually just start here
 outcome <- as.factor(dat$celltype)
 load("CleanedFeatures.RData")
+
 ##use random forest to cut down variables
+set.seed(0)
 rf1 <- ranger(x = preds, y = outcome,num.trees = 501,importance = "impurity")
 varImp <- importance(rf1)
 plot(varImp)
