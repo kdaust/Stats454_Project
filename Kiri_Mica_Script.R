@@ -49,7 +49,7 @@ toUse <- names(varImp[varImp > 1]) ##importance cutoff - kind of arbitrary
 preds <- preds[,toUse]
 
 #############################################
-### Naieve Bayes
+### Naive Bayes
 ############################################
 ##Genetic Algorithm
 ##fitness function
@@ -107,6 +107,7 @@ ga_1 <- ga(fitness = function(vars) calc_fitness(vars = vars,
 vars <- ga_1@solution
 vars <- vars[1,]
 varNames <- names(vars[vars == 1])
+data_x <- preds[,varNames]
 
 ###run cross validation to get accuracy and metrics
 pred_bayes <- array(NA, c(length(outcome),10))
