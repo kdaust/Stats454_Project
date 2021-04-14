@@ -100,27 +100,27 @@ for(ii in 1:nrep){
     #B_Cells
     y.train.B_Cells=as.matrix(as.matrix(dat.B_Cells[idx.cv[,ii]!=jj,1]))
     #y.test.B_Cells=as.matrix(dat.B_Cells[idx.cv[,ii]==jj,1])
-    model.ela.B_Cells=xgboost(data = x.train, label = y.train.B_Cells, max.depth = 20, eta = 1, nrounds = 2, nthread = 2, objective = "binary:logistic")
+    model.ela.B_Cells=xgboost(data = x.train, label = y.train.B_Cells, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
     y.pred[idx.cv[,ii]==jj,1]=predict(model.ela.B_Cells,x.test,type = "response")
     #Mesothelial_Cells
     y.train.Mesothelial_Cells=as.matrix(as.matrix(dat.Mesothelial_Cells[idx.cv[,ii]!=jj,1]))
     #y.test.Mesothelial_Cells=as.matrix(dat.Mesothelial_Cells[idx.cv[,ii]==jj,1])
-    model.ela.Mesothelial_Cells=xgboost(data = x.train, label = y.train.Mesothelial_Cells, max.depth = 20, eta = 1, nrounds = 2, nthread = 2, objective = "binary:logistic")
+    model.ela.Mesothelial_Cells=xgboost(data = x.train, label = y.train.Mesothelial_Cells, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
     y.pred[idx.cv[,ii]==jj,2]=predict(model.ela.Mesothelial_Cells,x.test,type = "response")
     #Myofibroblasts
     y.train.Myofibroblasts=as.matrix(as.matrix(dat.Myofibroblasts[idx.cv[,ii]!=jj,1]))
     #y.test.Myofibroblasts=as.matrix(dat.Myofibroblasts[idx.cv[,ii]==jj,1])
-    model.ela.Myofibroblasts=xgboost(data = x.train, label = y.train.Myofibroblasts, max.depth = 20, eta = 1, nrounds = 2, nthread = 2, objective = "binary:logistic")
+    model.ela.Myofibroblasts=xgboost(data = x.train, label = y.train.Myofibroblasts, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
     y.pred[idx.cv[,ii]==jj,3]=predict(model.ela.Myofibroblasts,x.test,type = "response")
     #pDCs
     y.train.pDCs=as.matrix(as.matrix(dat.pDCs[idx.cv[,ii]!=jj,1]))
     #y.test.pDCs=as.matrix(dat.pDCs[idx.cv[,ii]==jj,1])
-    model.ela.pDCs=xgboost(data = x.train, label = y.train.pDCs, max.depth = 20, eta = 1, nrounds = 2, nthread = 2, objective = "binary:logistic")
+    model.ela.pDCs=xgboost(data = x.train, label = y.train.pDCs, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
     y.pred[idx.cv[,ii]==jj,4]=predict(model.ela.pDCs,x.test,type = "response")
     #Smooth_Muscle_Cells
     y.train.Smooth_Muscle_Cells=as.matrix(as.matrix(dat.Smooth_Muscle_Cells[idx.cv[,ii]!=jj,1]))
     #y.test.Smooth_Muscle_Cells=as.matrix(dat.Smooth_Muscle_Cells[idx.cv[,ii]==jj,1])
-    model.ela.Smooth_Muscle_Cells=xgboost(data = x.train, label = y.train.Smooth_Muscle_Cells, max.depth = 20, eta = 1, nrounds = 2, nthread = 2, objective = "binary:logistic")
+    model.ela.Smooth_Muscle_Cells=xgboost(data = x.train, label = y.train.Smooth_Muscle_Cells, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
     y.pred[idx.cv[,ii]==jj,5]=predict(model.ela.Smooth_Muscle_Cells,x.test,type = "response")
   }
   
@@ -170,7 +170,7 @@ for(ii in 1:nrep){
 }
 
 #save the F1 result in a csv file 
-write.csv(F1,file="F1.xgboost_2.csv")
+write.csv(F1,file="F1.xgboost_3.csv")
 
 end_time=Sys.time()
 
