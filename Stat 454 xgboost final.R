@@ -65,10 +65,12 @@ idx.cv=read.csv(file="idx_cv.csv",row.names = 1)
 
 ##########find the fix lambda and alpha for binary elastic net for each cell type ##########
 ##tune max number of iterations
+
 response <- dat.Smooth_Muscle_Cells$yy
 xmat <- dat.Smooth_Muscle_Cells[,-1]
 xmat <- as.matrix(xmat)
-init.parms <- list(learning_rate =0.1,
+datCurr <- dat.Smooth_Muscle_Cells
+init.parms <- list(learning_rate =0.05,
                    n_estimators=1000,
                    max_depth=8,
                    min_child_weight=1,
@@ -78,16 +80,16 @@ init.parms <- list(learning_rate =0.1,
                    objective= 'binary:logistic',
                    scale_pos_weight=1)
 cvres <- xgb.cv(init.parms,data = xmat, label = response,
-                nrounds = 500, nfold = 5, metrics = "error",
+                nrounds = 500, nfold = 5, metrics = "logloss",
                 early_stopping_rounds = 50, print_every_n = 10)
 ##104 iterations
-plist <- list(max_depth = seq(5,25,by = 5),
+plist <- list(max_depth = seq(2,25,by = 5),
               min_child_weight = seq(1,6,2))
 
 library(superml)
 library(data.table)
-xg <- XGBTrainer$new(learning_rate =0.1,
-                     n_estimators=104,
+xg <- XGBTrainer$new(learning_rate =0.05,
+                     n_estimators=328,
                      gamma=0.1,
                      subsample=0.8,
                      colsample_bytree=0.8,
@@ -96,17 +98,18 @@ gst <- GridSearchCV$new(trainer = xg,
                         parameters = plist,
                         n_folds = 3,
                         scoring = "f1")
-gst$fit(dat.Smooth_Muscle_Cells,"yy")
+gst$fit(datCurr,"yy")
+gst$best_iteration()
 
-plist2 <- list(max_depth = c(4,5,6))
+plist2 <- list(max_depth = c(2,3,4,5))
 gst2 <- GridSearchCV$new(trainer = xg,
                          parameters = plist2,
                          n_folds = 3,
                          scoring = "f1")
-gst2$fit(dat.Smooth_Muscle_Cells,"yy")
+gst2$fit(datCurr,"yy")
 gst2$best_iteration()
 
-xg$max_depth = 4
+xg$max_depth = 3
 xg$min_child_weight = 1
 
 gst3 <- GridSearchCV$new(trainer = xg,
@@ -114,7 +117,7 @@ gst3 <- GridSearchCV$new(trainer = xg,
                                    gamma = c(0,0.1,0.2,0.3,0.4,0.5)),
                                  n_folds = 3,
                                  scoring = "f1")
-gst3$fit(dat.Smooth_Muscle_Cells,"yy")
+gst3$fit(datCurr,"yy")
 gst3$best_iteration()
 
 ##max_depth = 4, min_child_weight = 1, gamma = 0
@@ -137,6 +140,42 @@ test1 <- xgFinal$predict(df = xTest[,-1])
 test2 <- fifelse(test1 < 0.5,0,1)
 F1(xTest$yy,test2)
 ##hyperparameter tuning for xgboost
+
+##feature selection
+response <- dat.Smooth_Muscle_Cells$yy
+xmat <- dat.Smooth_Muscle_Cells[,-1]
+xmat <- as.matrix(xmat)
+
+smallMod <- xgboost(data = xmat, label = response, learning_rate = 0.05,
+                    max.depth = 3, gamma = 0, min_child_weight = 1, nrounds = 328,
+                    objective = "binary:logistic",subsample=0.5,
+                    colsample_bytree=0.5)
+imp <- xgb.importance(model = smallMod)
+smallPred <- dat.Smooth_Muscle_Cells[,c("yy",imp$Feature)]
+smallPred2 <- smallPred[,-1]
+smallpred2 <- model.matrix(~(TPM2+CALD1+HES4+VCAN+S100A10)^2,smallPred2)
+smallpred2 <- smallpred2[,-c(1:6)]
+smallPred <- cbind(smallPred,smallpred2)
+
+ii = 1
+res <- numeric(5)
+for(jj in 1:5){
+  x.train=as.matrix(smallPred[idx.cv[,ii]!=jj,-1])
+  x.test=as.matrix(smallPred[idx.cv[,ii]==jj,-1])
+  y.train.Smooth_Muscle_Cells=as.matrix(as.matrix(smallPred[idx.cv[,ii]!=jj,1]))
+  ytest=smallPred$yy[idx.cv[,ii]==jj]
+  #y.test.Smooth_Muscle_Cells=as.matrix(dat.Smooth_Muscle_Cells[idx.cv[,ii]==jj,1])
+  model.ela.Smooth_Muscle_Cells=xgboost(data = x.train, label = y.train.Smooth_Muscle_Cells, learning_rate = 0.08,
+                                        max.depth = 3, gamma = 0, min_child_weight = 2, nrounds = 250,
+                                        objective = "binary:logistic",subsample=0.9,
+                                        colsample_bytree=0.9, eta = 0.8,booster = "gbtree")
+  pred=predict(model.ela.Smooth_Muscle_Cells,x.test,type = "response")
+  pred <- fifelse(pred > 0.5,1,0)
+  res[jj] <- F1(ytest,predicted = pred)
+}
+res
+mean(res)
+var.imp <- xgb.importance(model = model.ela.Smooth_Muscle_Cells)
 
 ##########create matrix that will save the predict result##########
 #predict probability for each cell type
@@ -162,27 +201,38 @@ for(ii in 1:nrep){
     #B_Cells
     y.train.B_Cells=as.matrix(as.matrix(dat.B_Cells[idx.cv[,ii]!=jj,1]))
     #y.test.B_Cells=as.matrix(dat.B_Cells[idx.cv[,ii]==jj,1])
-    model.ela.B_Cells=xgboost(data = x.train, label = y.train.B_Cells, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
+    model.ela.B_Cells=xgboost(data = x.train, label = y.train.B_Cells, 
+                              max.depth = 4, gamma = 0, min_child_weight = 1, nrounds = 67,
+                              objective = "binary:logistic")
     y.pred[idx.cv[,ii]==jj,1]=predict(model.ela.B_Cells,x.test,type = "response")
     #Mesothelial_Cells
     y.train.Mesothelial_Cells=as.matrix(as.matrix(dat.Mesothelial_Cells[idx.cv[,ii]!=jj,1]))
     #y.test.Mesothelial_Cells=as.matrix(dat.Mesothelial_Cells[idx.cv[,ii]==jj,1])
-    model.ela.Mesothelial_Cells=xgboost(data = x.train, label = y.train.Mesothelial_Cells, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
+    model.ela.Mesothelial_Cells=xgboost(data = x.train, label = y.train.Mesothelial_Cells, 
+                                        max.depth = 4, gamma = 0, min_child_weight = 1, nrounds = 75,
+                                        objective = "binary:logistic")
     y.pred[idx.cv[,ii]==jj,2]=predict(model.ela.Mesothelial_Cells,x.test,type = "response")
     #Myofibroblasts
     y.train.Myofibroblasts=as.matrix(as.matrix(dat.Myofibroblasts[idx.cv[,ii]!=jj,1]))
     #y.test.Myofibroblasts=as.matrix(dat.Myofibroblasts[idx.cv[,ii]==jj,1])
-    model.ela.Myofibroblasts=xgboost(data = x.train, label = y.train.Myofibroblasts, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
+    model.ela.Myofibroblasts=xgboost(data = x.train, label = y.train.Myofibroblasts, 
+                                     max.depth = 4, gamma = 0, min_child_weight = 1, nrounds = 136,
+                                     objective = "binary:logistic")
     y.pred[idx.cv[,ii]==jj,3]=predict(model.ela.Myofibroblasts,x.test,type = "response")
     #pDCs
     y.train.pDCs=as.matrix(as.matrix(dat.pDCs[idx.cv[,ii]!=jj,1]))
     #y.test.pDCs=as.matrix(dat.pDCs[idx.cv[,ii]==jj,1])
-    model.ela.pDCs=xgboost(data = x.train, label = y.train.pDCs, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
+    model.ela.pDCs=xgboost(data = x.train, label = y.train.pDCs, 
+                           max.depth = 4, gamma = 0, min_child_weight = 1, nrounds = 27,
+                           objective = "binary:logistic")
     y.pred[idx.cv[,ii]==jj,4]=predict(model.ela.pDCs,x.test,type = "response")
     #Smooth_Muscle_Cells
     y.train.Smooth_Muscle_Cells=as.matrix(as.matrix(dat.Smooth_Muscle_Cells[idx.cv[,ii]!=jj,1]))
     #y.test.Smooth_Muscle_Cells=as.matrix(dat.Smooth_Muscle_Cells[idx.cv[,ii]==jj,1])
-    model.ela.Smooth_Muscle_Cells=xgboost(data = x.train, label = y.train.Smooth_Muscle_Cells, max.depth = 20, eta = 1, nrounds = 20, nthread = 2, objective = "binary:logistic")
+    model.ela.Smooth_Muscle_Cells=xgboost(data = x.train, label = y.train.Smooth_Muscle_Cells, learning_rate = 0.08,
+                                          max.depth = 3, gamma = 0, min_child_weight = 2, nrounds = 250,
+                                          objective = "binary:logistic",subsample=0.9,
+                                          colsample_bytree=0.9, eta = 0.8,booster = "gbtree")
     y.pred[idx.cv[,ii]==jj,5]=predict(model.ela.Smooth_Muscle_Cells,x.test,type = "response")
   }
   
@@ -232,7 +282,7 @@ for(ii in 1:nrep){
 }
 
 #save the F1 result in a csv file 
-write.csv(F1,file="F1.xgboost_3.csv")
+fwrite(F1,file="F1Xgboost_tuned.csv")
 
 end_time=Sys.time()
 
