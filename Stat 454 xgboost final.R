@@ -8,6 +8,30 @@ require("xgboost")
 #read data
 data.list=readRDS("final556.rds")
 
+recall <- function(true, predicted){
+  predicted <- as.numeric(as.character(predicted))
+  tp <- predicted[true == 1]
+  tp <- sum(tp)
+  condPos <- sum(true)
+  return(tp/condPos)
+}
+
+precision <- function(true, predicted){
+  predicted <- as.numeric(as.character(predicted))
+  tp <- predicted[true == 1]
+  tp <- sum(tp)
+  predPos <- sum(predicted)
+  return(tp/predPos)
+}
+
+F1 <- function(true,predicted){
+  predicted <- as.numeric(as.character(predicted))
+  RC <- recall(true,predicted)
+  PR <- precision(true,predicted)
+  res <- (RC*PR)/(RC+PR)
+  return(res*2)
+}
+
 
 ##########set up the dataset##########
 #change fabriclung to binary
@@ -40,41 +64,79 @@ nfolds=5 # 5-fold Cross valiation
 idx.cv=read.csv(file="idx_cv.csv",row.names = 1)
 
 ##########find the fix lambda and alpha for binary elastic net for each cell type ##########
+##tune max number of iterations
+response <- dat.Smooth_Muscle_Cells$yy
+xmat <- dat.Smooth_Muscle_Cells[,-1]
+xmat <- as.matrix(xmat)
+init.parms <- list(learning_rate =0.1,
+                   n_estimators=1000,
+                   max_depth=8,
+                   min_child_weight=1,
+                   gamma=0.1,
+                   subsample=0.8,
+                   colsample_bytree=0.8,
+                   objective= 'binary:logistic',
+                   scale_pos_weight=1)
+cvres <- xgb.cv(init.parms,data = xmat, label = response,
+                nrounds = 500, nfold = 5, metrics = "error",
+                early_stopping_rounds = 50, print_every_n = 10)
+##104 iterations
+plist <- list(max_depth = seq(5,25,by = 5),
+              min_child_weight = seq(1,6,2))
 
-# #B_Cells
-# xx=as.matrix(dat.B_Cells[,-1])
-# yy=as.matrix(dat.B_Cells[,1])
-# cv.B_Cells=cv.glmnet2(xx,yy,foldid=NULL,alpha=seq(1,9,by=1)/10,family="binomial",type.measure="class")
-# lamdba.fix.B_Cells=cv.B_Cells$lambda.1se
-# alpha.fix.B_Cells=cv.B_Cells$alpha
-# 
-# #Mesothelial_Cells
-# xx=as.matrix(dat.Mesothelial_Cells[,-1])
-# yy=as.matrix(dat.Mesothelial_Cells[,1])
-# #cv.Mesothelial_Cells=cv.glmnet2(xx,yy,foldid=NULL,alpha=seq(1,9,by=1)/10,family="binomial",type.measure="class")
-# #lamdba.fix.Mesothelial_Cells=cv.Mesothelial_Cells$lambda.1se
-# #alpha.fix.Mesothelial_Cells=cv.Mesothelial_Cells$alpha
-# 
-# #Myofibroblasts
-# xx=as.matrix(dat.Myofibroblasts[,-1])
-# yy=as.matrix(dat.Myofibroblasts[,1])
-# # cv.Myofibroblasts=cv.glmnet2(xx,yy,foldid=NULL,alpha=seq(1,9,by=1)/10,family="binomial",type.measure="class")
-# # lamdba.fix.Myofibroblasts=cv.Myofibroblasts$lambda.1se
-# # alpha.fix.Myofibroblasts=cv.Myofibroblasts$alpha
-# 
-# #pDCs
-# xx=as.matrix(dat.pDCs[,-1])
-# yy=as.matrix(dat.pDCs[,1])
-# cv.pDCs=cv.glmnet2(xx,yy,foldid=NULL,alpha=seq(1,9,by=1)/10,family="binomial",type.measure="class")
-# lamdba.fix.pDCs=cv.pDCs$lambda.1se
-# alpha.fix.pDCs=cv.pDCs$alpha
-# 
-# #Smooth_Muscle_Cells
-# xx=as.matrix(dat.Smooth_Muscle_Cells[,-1])
-# yy=as.matrix(dat.Smooth_Muscle_Cells[,1])
-# cv.Smooth_Muscle_Cells=cv.glmnet2(xx,yy,foldid=NULL,alpha=seq(1,9,by=1)/10,family="binomial",type.measure="class")
-# lamdba.fix.Smooth_Muscle_Cells=cv.Smooth_Muscle_Cells$lambda.1se
-# alpha.fix.Smooth_Muscle_Cells=cv.Smooth_Muscle_Cells$alpha
+library(superml)
+library(data.table)
+xg <- XGBTrainer$new(learning_rate =0.1,
+                     n_estimators=104,
+                     gamma=0.1,
+                     subsample=0.8,
+                     colsample_bytree=0.8,
+                     objective= 'binary:logistic')
+gst <- GridSearchCV$new(trainer = xg,
+                        parameters = plist,
+                        n_folds = 3,
+                        scoring = "f1")
+gst$fit(dat.Smooth_Muscle_Cells,"yy")
+
+plist2 <- list(max_depth = c(4,5,6))
+gst2 <- GridSearchCV$new(trainer = xg,
+                         parameters = plist2,
+                         n_folds = 3,
+                         scoring = "f1")
+gst2$fit(dat.Smooth_Muscle_Cells,"yy")
+gst2$best_iteration()
+
+xg$max_depth = 4
+xg$min_child_weight = 1
+
+gst3 <- GridSearchCV$new(trainer = xg,
+                                 parameters = list(
+                                   gamma = c(0,0.1,0.2,0.3,0.4,0.5)),
+                                 n_folds = 3,
+                                 scoring = "f1")
+gst3$fit(dat.Smooth_Muscle_Cells,"yy")
+gst3$best_iteration()
+
+##max_depth = 4, min_child_weight = 1, gamma = 0
+xgFinal <- XGBTrainer$new(learning_rate = 0.1,
+                          n_estimators = 104,
+                          gamma=0,
+                          max_depth = 4,
+                          min_child_weight = 1,
+                          subsample=0.8,
+                          colsample_bytree=0.8,
+                          objective= 'binary:logistic')
+
+library(caret)
+split <- createDataPartition(y = response, p = 0.8)
+xTrain <- dat.Smooth_Muscle_Cells[split$Resample1,]
+xTest <- dat.Smooth_Muscle_Cells[-split$Resample1,]
+
+xgFinal$fit(X = xTrain, y = "yy")
+test1 <- xgFinal$predict(df = xTest[,-1])
+test2 <- fifelse(test1 < 0.5,0,1)
+F1(xTest$yy,test2)
+##hyperparameter tuning for xgboost
 
 ##########create matrix that will save the predict result##########
 #predict probability for each cell type
