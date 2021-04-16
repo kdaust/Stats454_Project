@@ -284,6 +284,30 @@ for(ii in 1:nrep){
 #save the F1 result in a csv file 
 fwrite(F1,file="F1Xgboost_tuned.csv")
 
+compF1 <- fread("F1.binary.csv")
+compF1[,V1 := NULL]
+
+diff <- F1 - compF1
+boxplot(diff)
+abline(h = 0)
+diff2 <- melt(diff)
+setnames(diff2, c("Celltype","F1_Difference"))
+ggplot(diff2, aes(x = Celltype, y = F1_Difference, fill = Celltype))+
+  geom_boxplot() +
+  geom_abline(slope = 0, intercept = 0, lty = 2)+
+  theme_light()+
+  theme(legend.position = "n")
+
+enet <- melt(compF1)
+xgb <- melt(F1)
+compdat <- data.table(Enet = enet$value, XGboost = xgb$value)
+compdat <- melt(compdat)
+setnames(compdat,c("Model","F1"))
+ggplot(compdat, aes(x = Model, y = F1, fill = Model))+
+  geom_boxplot() +
+  theme_light()+
+  theme(legend.position = "n")
+
 end_time=Sys.time()
 
 #length to run all of code

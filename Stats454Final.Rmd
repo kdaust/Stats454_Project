@@ -1,0 +1,69 @@
+---
+title: "Stat 454 Final Project"
+author: "Kiri Daust & Mica Grant-Hagen"
+date: "15/04/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(data.table)
+library(foreach)
+```
+
+# Introduction
+
+# Methods
+
+## Hyperparameter Tuning
+
+# Results
+
+```{r, echo = F}
+compF1 <- fread("F1.binary.csv")
+compF1[,V1 := NULL]
+F1 <- fread("F1Xgboost_tuned.csv")
+
+diff <- F1 - compF1
+diff2 <- melt(diff)
+setnames(diff2, c("Celltype","F1_Difference"))
+ggplot(diff2, aes(x = Celltype, y = F1_Difference, fill = Celltype))+
+  geom_boxplot() +
+  geom_abline(slope = 0, intercept = 0, lty = 2)+
+  theme_light()+
+  theme(legend.position = "n")
+```
+
+
+
+```{r, echo = F,message=FALSE, warning=FALSE}
+enet <- melt(compF1)
+xgb <- melt(F1)
+compdat <- data.table(Enet = enet$value, XGboost = xgb$value)
+compdat <- melt(compdat)
+setnames(compdat,c("Model","F1"))
+ggplot(compdat, aes(x = Model, y = F1, fill = Model))+
+  geom_boxplot() +
+  theme_light()+
+  theme(legend.position = "n")
+```
+
+```{r}
+tab1 <- data.table(Celltype = enet$variable,
+                   el_net = enet$value,
+                   xgboost = xgb$value)
+tab1 <- melt(tab1, id.vars = "Celltype")
+tab2 <- dcast(tab1,Celltype ~ variable, fun.aggregate = mean)
+tab2[,Wilcox_pval := NA_real_]
+
+for(cell in tab2$Celltype){
+  wil.test <- wilcox.test(compF1[[cell]],F1[[cell]],paired = T)
+  tab2[Celltype == cell, Wilcox_pval := wil.test$p.value]
+}
+
+knitr::kable(tab2,digits = 4)
+
+compdat <- data.table(Enet = enet$value, XGboost = xgb$value)
+wilcox.test(compdat$Enet,compdat$XGboost,paired = T)
+```
