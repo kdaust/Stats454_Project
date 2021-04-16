@@ -16,19 +16,32 @@ library(foreach)
 
 Recent advances in genetic analysis allow us to sequence RNA at a single cellular level. As such, it has become increasingly important to develop analysis methods for making sense of the huge amounts of data that result from these procedures. Machine learning has become a common method for classifying samples into different cell types, which is often a first component of analysis. A typical machine learning algorithm for this problem is to use elastic net regression to classify each sample. While this technique produces reasonably good accuracy, we think it is possible to do better overall. In this project, we will try different machine learning algorithms, and will attempt to beat the accuracy of the elastic net regression.
 
+We worked on two different methods in attempts to beat the F1 values that our professor had achieved with elastic net regression. These two methods were Bayesian Additive Regression Tree modelling (BART) and XGBoost. We were able to achieve success with the XGBoost method, so our report will solely focus on this method. With individually tuning the hyperparameters for each cell type, we ended up getting higher F1 average values for each cell type.
+
+XGBoost stands for extreme gradient boosting. It is a scalable machine learning system for tree boosting. XGBoost is able to be used for multiclass classification, binary classification, and regression. In our project, we decided to use binary classification because that gave us the opportunity to individually tune the models for each celltype, much like what our professor did for elastic net.
+
+
 # Methods
 
 ## Hyperparameter Tuning
 
-We created a separate XGBoost model for each cell type, and then used the prediction with the highest probability to classify the sample. Because each cell type might respond differently to classification, we decided to tune the hyperparameters of each model separately. First, we tuned the number of iterations for each model, using a built in cross-validation function in the XGBoost package. Since F1 score was not implimented as a scoring statistic in this function, we used binary logloss as the metric. Optimal numbers of iterations ranged from 27 to 136 depending on the celltype. Using the optimal number of iterations, we then used 3-fold grid-search cross-validation with F1 metric to tune the maximum tree depth and the minimum child-weight to split. For all of the celltypes, the optimals values were depth = 4 and min_child_weight = 1. Finally, we tuned the parameter gamma, which determines how much improvement is required to make a new split. No models showed any improvement with increased gamma, so we kept it at zero. 
+We created a separate XGBoost model for each cell type, and then used the prediction with the highest probability to classify the sample. Because each cell type might respond differently to classification, we decided to tune the hyperparameters of each model separately. First, we tuned the number of iterations for each model, using a built in cross-validation function in the XGBoost package. Since F1 score was not implemented as a scoring statistic in this function, we used binary logloss as the metric. Optimal numbers of iterations ranged from 27 to 136 depending on the celltype. Using the optimal number of iterations, we then used 3-fold grid-search cross-validation with F1 metric to tune the maximum tree depth and the minimum child-weight to split. For all of the celltypes, the optimals values were depth = 4 and min_child_weight = 1. Finally, we tuned the parameter gamma, which determines how much improvement is required to make a new split. No models showed any improvement with increased gamma, so we kept it at zero. 
 
 The tuned models performed well for all but the Smooth_Muscle_Cells, so we did more tuning for this model. Initially we had used a fairly fast learning rate of 0.1 for all models; this means the models train quickly, but are more likely to overfit. To try and improve the performance of this model, we decreased the learning rate to 0.08. This resulted in an increased number of iterations with the optimum being at 250, and a slightly decreased optimal tree depth. Model performance was improved slightly, but was still not as good as we were hoping. We thus tried adjusting some more parameters: eta (controls learning rate), subsample, and subsample by tree. We again used gridsearch to tune these parameters, and found optimal performance with eta = 0.8 and both subsamples at 0.9. This final model had slightly but significantly improved performance from the original model, so we used it as the final version.
 
-**need to talk about how we computed final accuracy using the same method as the profs script etc
+
+## XGBoost
+
+We used 5-fold cross-validation 10 times. To keep the comparisons between XGBoost and elastic net fair, we used the provided cross-validation index that our professor used for his method. Inside the cross-validation loop, we set up our 5 different models for each other celltypes with the hyperparameters that were selected during the hyperparameter tuning section. For each celltype, we used a binary version of the labels where 1 was that celltype and 0 if is was any of the other four celltypes. This is because we are using a binary classifcation version of XGBoost. Once we trained our models for that iteration of the cross-validation loop, we predicted the binary classifications. After each of the ten rounds of cross-validation, we calulated the F1 scores for each model. 
+
 
 # Results
 
-Our overall model performance (measured by F1 score) was much improved from the standard elastic net regression. Figure 1 shows a box plot of the difference in F1 score for each cell type, where each box represents the 10 replications. Thus, values above zero mean our model F1 score was higher than the elastic net model. For Mesothelial cells, Myofibroblasts, and pDCs, our model always scored higher, and by a large margin for Mesothelial cells and pDCs. Our model was also better for B_Cells, although not by as much. Even with the extra tuning, our model still struggled with Smooth Muscle cells, and ended up showing performance similar to Elastic net. Although the median is below zero, the average is slightly positive (so favouring our model).
+Our overall model performance (measured by F1 score) was much improved from the standard elastic net regression. Figure 1 shows a box plot of the difference in F1 score for each cell type, where each box represents the 10 replications. Thus, values above zero mean our model F1 score was higher than the elastic net model. For Mesothelial cells, Myofibroblasts, and pDCs, our model always scored higher, and by a large margin for Mesothelial cells and pDCs. Our model was also better for B_Cells, although not by as much. Even with the extra tuning, our model still struggled with Smooth Muscle cells, and ended up showing performance similar to Elastic net. Although the median is below zero, the average is slightly positive, which means that our model is still the better model for that celltype. With more replications of cross-validation, we would be able to solidify this statement.
+
+When we look at figure 2 and 3, we can see how the F1 values for each celltype are plot for each method. Figure 2 is looking at our XGBoost method's results. As we can see, the F1 values for B_cells, the boxplot is very condensed and has a few outliers. The outliers aren't spread out too much, so the variability of the scores isn't drastic. When we look at pDCs, like B_cells, we get a very condensed boxplot, but our outliers for this celltype are a lot more severe. For both of these celltypes, these outliers could be popping up because we are only dealing with 10 F1 values for each celltype. If we had more values to plot, I suspect that the outliers wouldn't show up as outliers and just be apart of the main boxplot. Overall, the F1 values for B_cells are consistently the best and the F1 values for smooth muscle cells are consistently the worst.
+
+Figure 3 is a boxplot of the professor's elastic net method's F1 values. Like our method's results, the plot for both B_cells and pDCs end up having outliers, but significantly less than ours. pCDs only has one outliers and it is for a lower score. B_cells has significantly better F1 values than any other cell. The interesting thing with these results is that all of the other celltype almost completely overlap each other. This is a big difference between our results and elastic net's results. For our results, only pDCs overlapped with the other celltypes, excluding B_cells. This means that for elastic net, every celltype, except B_cells, performed almost identically for classification.
 
 ```{r, echo = F, message=FALSE, warning=F}
 compF1 <- fread("F1.binary.csv")
@@ -42,10 +55,29 @@ ggplot(diff2, aes(x = Celltype, y = F1_Difference, fill = Celltype))+
   geom_boxplot() +
   geom_abline(slope = 0, intercept = 0, lty = 2)+
   theme_light()+
-  theme(legend.position = "n")
+  theme(legend.position = "n")+
+  ggtitle("Fig 1: XGBoost F1 - Elastic Net F1")
+F1_2<-melt(F1)
+compF1_2<-melt(compF1)
+setnames(F1_2, c("Celltype","F1"))
+ggplot(F1_2, aes(x = Celltype, y = F1, fill = Celltype))+
+  geom_boxplot() +
+  geom_abline(slope = 0, intercept = 0, lty = 2)+
+  theme_light()+
+  theme(legend.position = "n")+
+  ggtitle("Fig 2: XGBoost F1")
+setnames(compF1_2, c("Celltype","F1"))
+ggplot(compF1_2, aes(x = Celltype, y = F1, fill = Celltype))+
+  geom_boxplot() +
+  geom_abline(slope = 0, intercept = 0, lty = 2)+
+  theme_light()+
+  theme(legend.position = "n")+
+  ggtitle("Fig 3: Elastic Net F1")
 ```
 
-Looking at average F1 scores across all celltypes, our model performed significantly better than the elastic net (Figure 2; V = 68, p < 0.0001, Wilcoxon paired test). Average F1 score for elastic net was 0.980, and for XGBoost was 0.985. Although this is not a huge improvement, because the F1 scores were already very good, even a small improvement could be meaningful. 
+Looking at average F1 scores across all celltypes, our model performed significantly better than the elastic net (Figure 4; V = 68, p < 0.0001, Wilcoxon paired test). Average F1 score for elastic net was 0.980, and for XGBoost was 0.985. Although this is not a huge improvement, because the F1 scores were already very good, even a small improvement could be meaningful. 
+
+
 
 ```{r, echo = F,message=FALSE, warning=FALSE}
 enet <- melt(compF1)
@@ -57,10 +89,11 @@ setnames(compdat,c("Model","F1"))
 ggplot(compdat, aes(x = Model, y = F1, fill = Model))+
   geom_boxplot() +
   theme_light()+
-  theme(legend.position = "n")
+  theme(legend.position = "n")+
+  ggtitle("Fig 4: All F1 values")
 ```
 
-When looking at mean F1 scores, our model was able to outperform the elastic net model for all celltypes. Table 1 below shows the mean F1 score for each celltype, and the p-value from a paired Wilcox test. Using an $\alpha = 0.05$ level, our model performed significantly better than the elastic net model for all cells except the smooth muscle cells, which had no detectable difference. 
+When looking at mean F1 scores, our model was able to outperform the elastic net model for all celltypes. Table 1 below shows the mean F1 score for each celltype, and the p-value from a paired Wilcox test. Using an $\alpha = 0.05$ level, our model performed significantly better than the elastic net model for all cells except the smooth muscle cells, which had no detectable difference, since it's p-value is well above our alpha value.
 
 ```{r, echo=FALSE, warning=F}
 tab1 <- data.table(Celltype = enet$variable,
