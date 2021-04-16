@@ -1,13 +1,18 @@
-#clean
-rm(list = ls())
+##Stats 454 Final project
+##Mica Grant-Hagen and Kiri Daust
+##Note that the overall structure of this script is 
+##based on Dr. Zhang's elastic net script
 
-start_time=Sys.time()
-#library package
 library(MTPS)
 require("xgboost")
+require(superml)
+require(caret)
+require(data.table)
+library(ggplot2)
 #read data
 data.list=readRDS("final556.rds")
 
+##just some functions for doing tests
 recall <- function(true, predicted){
   predicted <- as.numeric(as.character(predicted))
   tp <- predicted[true == 1]
@@ -58,15 +63,14 @@ set.seed(0)
 nrep=10 # replication 10 times
 nfolds=5 # 5-fold Cross valiation 
 
-
-
 ###"idx_cv.csv" can be read by read.csv()
 idx.cv=read.csv(file="idx_cv.csv",row.names = 1)
 
-##########find the fix lambda and alpha for binary elastic net for each cell type ##########
-##tune max number of iterations
+###hyperparameter tuning: we only present one celltype example of parameter tuning here
+##all others were conducted in a similar way
 
-response <- dat.Smooth_Muscle_Cells$yy
+##tune max number of iterations
+response <- dat.Smooth_Muscle_Cells$yy##specify celltype
 xmat <- dat.Smooth_Muscle_Cells[,-1]
 xmat <- as.matrix(xmat)
 datCurr <- dat.Smooth_Muscle_Cells
@@ -79,17 +83,19 @@ init.parms <- list(learning_rate =0.05,
                    colsample_bytree=0.8,
                    objective= 'binary:logistic',
                    scale_pos_weight=1)
+##run cv function to find optimal number  of iterations
 cvres <- xgb.cv(init.parms,data = xmat, label = response,
                 nrounds = 500, nfold = 5, metrics = "logloss",
                 early_stopping_rounds = 50, print_every_n = 10)
-##104 iterations
+
+##now setup to do grid search over max_depth and min child weight
 plist <- list(max_depth = seq(2,25,by = 5),
               min_child_weight = seq(1,6,2))
 
-library(superml)
-library(data.table)
+##for simplicity, we used the superml package structure here
+##which has nice functions for cross-validation grid search
 xg <- XGBTrainer$new(learning_rate =0.05,
-                     n_estimators=328,
+                     n_estimators=328, ##this is based on the results from above
                      gamma=0.1,
                      subsample=0.8,
                      colsample_bytree=0.8,
@@ -98,10 +104,11 @@ gst <- GridSearchCV$new(trainer = xg,
                         parameters = plist,
                         n_folds = 3,
                         scoring = "f1")
-gst$fit(datCurr,"yy")
-gst$best_iteration()
+gst$fit(datCurr,"yy")##run grid search
+gst$best_iteration()##print results
 
-plist2 <- list(max_depth = c(2,3,4,5))
+##now try max depth with a finer range of values around the previous best
+plist2 <- list(max_depth = c(3,4,5))
 gst2 <- GridSearchCV$new(trainer = xg,
                          parameters = plist2,
                          n_folds = 3,
@@ -109,9 +116,11 @@ gst2 <- GridSearchCV$new(trainer = xg,
 gst2$fit(datCurr,"yy")
 gst2$best_iteration()
 
+##set parameters based on grid search results
 xg$max_depth = 3
 xg$min_child_weight = 1
 
+##finally, tune gamma
 gst3 <- GridSearchCV$new(trainer = xg,
                                  parameters = list(
                                    gamma = c(0,0.1,0.2,0.3,0.4,0.5)),
@@ -120,62 +129,6 @@ gst3 <- GridSearchCV$new(trainer = xg,
 gst3$fit(datCurr,"yy")
 gst3$best_iteration()
 
-##max_depth = 4, min_child_weight = 1, gamma = 0
-xgFinal <- XGBTrainer$new(learning_rate = 0.1,
-                          n_estimators = 104,
-                          gamma=0,
-                          max_depth = 4,
-                          min_child_weight = 1,
-                          subsample=0.8,
-                          colsample_bytree=0.8,
-                          objective= 'binary:logistic')
-
-library(caret)
-split <- createDataPartition(y = response, p = 0.8)
-xTrain <- dat.Smooth_Muscle_Cells[split$Resample1,]
-xTest <- dat.Smooth_Muscle_Cells[-split$Resample1,]
-
-xgFinal$fit(X = xTrain, y = "yy")
-test1 <- xgFinal$predict(df = xTest[,-1])
-test2 <- fifelse(test1 < 0.5,0,1)
-F1(xTest$yy,test2)
-##hyperparameter tuning for xgboost
-
-##feature selection
-response <- dat.Smooth_Muscle_Cells$yy
-xmat <- dat.Smooth_Muscle_Cells[,-1]
-xmat <- as.matrix(xmat)
-
-smallMod <- xgboost(data = xmat, label = response, learning_rate = 0.05,
-                    max.depth = 3, gamma = 0, min_child_weight = 1, nrounds = 328,
-                    objective = "binary:logistic",subsample=0.5,
-                    colsample_bytree=0.5)
-imp <- xgb.importance(model = smallMod)
-smallPred <- dat.Smooth_Muscle_Cells[,c("yy",imp$Feature)]
-smallPred2 <- smallPred[,-1]
-smallpred2 <- model.matrix(~(TPM2+CALD1+HES4+VCAN+S100A10)^2,smallPred2)
-smallpred2 <- smallpred2[,-c(1:6)]
-smallPred <- cbind(smallPred,smallpred2)
-
-ii = 1
-res <- numeric(5)
-for(jj in 1:5){
-  x.train=as.matrix(smallPred[idx.cv[,ii]!=jj,-1])
-  x.test=as.matrix(smallPred[idx.cv[,ii]==jj,-1])
-  y.train.Smooth_Muscle_Cells=as.matrix(as.matrix(smallPred[idx.cv[,ii]!=jj,1]))
-  ytest=smallPred$yy[idx.cv[,ii]==jj]
-  #y.test.Smooth_Muscle_Cells=as.matrix(dat.Smooth_Muscle_Cells[idx.cv[,ii]==jj,1])
-  model.ela.Smooth_Muscle_Cells=xgboost(data = x.train, label = y.train.Smooth_Muscle_Cells, learning_rate = 0.08,
-                                        max.depth = 3, gamma = 0, min_child_weight = 2, nrounds = 250,
-                                        objective = "binary:logistic",subsample=0.9,
-                                        colsample_bytree=0.9, eta = 0.8,booster = "gbtree")
-  pred=predict(model.ela.Smooth_Muscle_Cells,x.test,type = "response")
-  pred <- fifelse(pred > 0.5,1,0)
-  res[jj] <- F1(ytest,predicted = pred)
-}
-res
-mean(res)
-var.imp <- xgb.importance(model = model.ela.Smooth_Muscle_Cells)
 
 ##########create matrix that will save the predict result##########
 #predict probability for each cell type
@@ -193,7 +146,7 @@ colnames(F1)=c("B_Cells",
                "Mesothelial_Cells","Myofibroblasts",
                "pDCs","Smooth_Muscle_Cells")
 
-##########fit model##########
+##########fit models with tune hyperparameters##########
 for(ii in 1:nrep){
   for(jj in 1:nfolds){
     x.train=as.matrix(dat.B_Cells[idx.cv[,ii]!=jj,-1])
@@ -284,31 +237,109 @@ for(ii in 1:nrep){
 #save the F1 result in a csv file 
 fwrite(F1,file="F1Xgboost_tuned.csv")
 
+##read in the elastic net F1 scores
 compF1 <- fread("F1.binary.csv")
 compF1[,V1 := NULL]
 
+##make difference plot
 diff <- F1 - compF1
-boxplot(diff)
-abline(h = 0)
 diff2 <- melt(diff)
 setnames(diff2, c("Celltype","F1_Difference"))
 ggplot(diff2, aes(x = Celltype, y = F1_Difference, fill = Celltype))+
   geom_boxplot() +
   geom_abline(slope = 0, intercept = 0, lty = 2)+
   theme_light()+
-  theme(legend.position = "n")
+  theme(legend.position = "n")+
+  labs(y = "F1 Difference") +
+  ggtitle("Fig 1: XGBoost F1 - Elastic Net F1")
 
+##make XGBoost F1 plot
+F1_2<-melt(F1)
+compF1_2<-melt(compF1)
+setnames(F1_2, c("Celltype","F1"))
+ggplot(F1_2, aes(x = Celltype, y = F1, fill = Celltype))+
+  geom_boxplot() +
+  geom_abline(slope = 0, intercept = 0, lty = 2)+
+  theme_light()+
+  theme(legend.position = "n")+
+  ggtitle("Fig 2: F1 Scores for XGBoost")
+
+##make elastic nett F1 plot
+setnames(compF1_2, c("Celltype","F1"))
+ggplot(compF1_2, aes(x = Celltype, y = F1, fill = Celltype))+
+  geom_boxplot() +
+  geom_abline(slope = 0, intercept = 0, lty = 2)+
+  theme_light()+
+  theme(legend.position = "n")+
+  ggtitle("Fig 3: F1 Scores for Elastic Net")
+
+##make overall boxplot
 enet <- melt(compF1)
 xgb <- melt(F1)
 compdat <- data.table(Enet = enet$value, XGboost = xgb$value)
+#colMeans(compdat)
 compdat <- melt(compdat)
 setnames(compdat,c("Model","F1"))
 ggplot(compdat, aes(x = Model, y = F1, fill = Model))+
   geom_boxplot() +
   theme_light()+
-  theme(legend.position = "n")
+  theme(legend.position = "n")+
+  ggtitle("Fig 4: All F1 values")
 
-end_time=Sys.time()
+##make table and run wilcox test for each celltype
+tab1 <- data.table(Celltype = enet$variable,
+                   el_net = enet$value,
+                   xgboost = xgb$value)
+tab1 <- melt(tab1, id.vars = "Celltype")
+tab2 <- dcast(tab1,Celltype ~ variable, fun.aggregate = mean)
+tab2[,Wilcox_pval := NA_real_]
 
-#length to run all of code
-start_time-end_time
+for(cell in tab2$Celltype){
+  wil.test <- wilcox.test(compF1[[cell]],F1[[cell]],paired = T)
+  tab2[Celltype == cell, Wilcox_pval := wil.test$p.value]
+}
+
+tab2
+##run overall wilcox test
+compdat <- data.table(Enet = enet$value, XGboost = xgb$value)
+wilcox.test(compdat$Enet,compdat$XGboost,paired = T)
+###end of script
+
+##note that we also tried feature selection, but abandoned it because
+##it didn't improve performance
+
+##feature selection
+# response <- dat.Smooth_Muscle_Cells$yy
+# xmat <- dat.Smooth_Muscle_Cells[,-1]
+# xmat <- as.matrix(xmat)
+# 
+# smallMod <- xgboost(data = xmat, label = response, learning_rate = 0.05,
+#                     max.depth = 3, gamma = 0, min_child_weight = 1, nrounds = 328,
+#                     objective = "binary:logistic",subsample=0.5,
+#                     colsample_bytree=0.5)
+# imp <- xgb.importance(model = smallMod)
+# smallPred <- dat.Smooth_Muscle_Cells[,c("yy",imp$Feature)]
+# smallPred2 <- smallPred[,-1]
+# smallpred2 <- model.matrix(~(TPM2+CALD1+HES4+VCAN+S100A10)^2,smallPred2)
+# smallpred2 <- smallpred2[,-c(1:6)]
+# smallPred <- cbind(smallPred,smallpred2)
+# 
+# ii = 1
+# res <- numeric(5)
+# for(jj in 1:5){
+#   x.train=as.matrix(smallPred[idx.cv[,ii]!=jj,-1])
+#   x.test=as.matrix(smallPred[idx.cv[,ii]==jj,-1])
+#   y.train.Smooth_Muscle_Cells=as.matrix(as.matrix(smallPred[idx.cv[,ii]!=jj,1]))
+#   ytest=smallPred$yy[idx.cv[,ii]==jj]
+#   #y.test.Smooth_Muscle_Cells=as.matrix(dat.Smooth_Muscle_Cells[idx.cv[,ii]==jj,1])
+#   model.ela.Smooth_Muscle_Cells=xgboost(data = x.train, label = y.train.Smooth_Muscle_Cells, learning_rate = 0.08,
+#                                         max.depth = 3, gamma = 0, min_child_weight = 2, nrounds = 250,
+#                                         objective = "binary:logistic",subsample=0.9,
+#                                         colsample_bytree=0.9, eta = 0.8,booster = "gbtree")
+#   pred=predict(model.ela.Smooth_Muscle_Cells,x.test,type = "response")
+#   pred <- fifelse(pred > 0.5,1,0)
+#   res[jj] <- F1(ytest,predicted = pred)
+# }
+# res
+# mean(res)
+# var.imp <- xgb.importance(model = model.ela.Smooth_Muscle_Cells)
