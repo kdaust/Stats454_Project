@@ -14,19 +14,23 @@ library(foreach)
 
 # Introduction
 
-Recent advances in genetic analysis allow us to sequence the DNA at a single cellular level. As such, it has become increasingly important to develop analysis methods for making sense of the huge amounts of data that result from these procedures. Machine learning has become a common method for classifying samples into different cell types. A typical machine learning algorithm for this problem is to use elastic net regression to classify each sample. While this technique produces reasonably good accuracy, we think it is possible to do better overall. In this project, we will try different machine learning algorithms, and will attempt to beat the accuracy of the elastic net regression.
+Recent advances in genetic analysis allow us to sequence RNA at a single cellular level. As such, it has become increasingly important to develop analysis methods for making sense of the huge amounts of data that result from these procedures. Machine learning has become a common method for classifying samples into different cell types, which is often a first component of analysis. A typical machine learning algorithm for this problem is to use elastic net regression to classify each sample. While this technique produces reasonably good accuracy, we think it is possible to do better overall. In this project, we will try different machine learning algorithms, and will attempt to beat the accuracy of the elastic net regression.
 
 # Methods
 
 ## Hyperparameter Tuning
 
-We created a separate XGBoost model for each cell type, and then used the prediction with the highest probability to classify the sample. Because each cell type might respond differently to classification, we decided to tune the hyperparameters of each model separately. First, we tuned the number of iterations for each model, using a built in cross-validation function in the XGBoost package. Optimal numbers of iterations ranged from 27 to 136 depending on the celltype. Using the optimal number of iterations, we then used 3-fold grid-search cross-validation to tune the maximum tree depth and the minimum child-weight to split. For all of the celltypes, the optimals values were depth = 4 and min_child_weight = 1. Finally, we tuned the parameter gamma, which determines how much improvement is required to make a new split. No models showed any improvement with increased gamma, so we kept it at zero. 
+We created a separate XGBoost model for each cell type, and then used the prediction with the highest probability to classify the sample. Because each cell type might respond differently to classification, we decided to tune the hyperparameters of each model separately. First, we tuned the number of iterations for each model, using a built in cross-validation function in the XGBoost package. Since F1 score was not implimented as a scoring statistic in this function, we used binary logloss as the metric. Optimal numbers of iterations ranged from 27 to 136 depending on the celltype. Using the optimal number of iterations, we then used 3-fold grid-search cross-validation with F1 metric to tune the maximum tree depth and the minimum child-weight to split. For all of the celltypes, the optimals values were depth = 4 and min_child_weight = 1. Finally, we tuned the parameter gamma, which determines how much improvement is required to make a new split. No models showed any improvement with increased gamma, so we kept it at zero. 
 
-The tuned models performed well for all but the Smooth_Muscle_Cells, so we did more tuning for this model. Initially we had used a fairly fast learning rate of 0.1 for all models; this means the models train quickly, but are more likely to overfit. To try and improve the performance of this model, we decreased the learning rate to 0.08. This resulted in an increased number of iterations with the optimum being at 250, and a slightly decreased optimal tree depth. Model performance was improved slightly, but was still not as good as we were hoping. We thus tried adjusting some more parameters: eta (controls learning rate), subsample, and subsample by tree. We again used gridsearch to tune these parameters, and found optimal performance with eta = 0.8 and both subsamples at 0.9.
+The tuned models performed well for all but the Smooth_Muscle_Cells, so we did more tuning for this model. Initially we had used a fairly fast learning rate of 0.1 for all models; this means the models train quickly, but are more likely to overfit. To try and improve the performance of this model, we decreased the learning rate to 0.08. This resulted in an increased number of iterations with the optimum being at 250, and a slightly decreased optimal tree depth. Model performance was improved slightly, but was still not as good as we were hoping. We thus tried adjusting some more parameters: eta (controls learning rate), subsample, and subsample by tree. We again used gridsearch to tune these parameters, and found optimal performance with eta = 0.8 and both subsamples at 0.9. This final model had slightly but significantly improved performance from the original model, so we used it as the final version.
+
+**need to talk about how we computed final accuracy using the same method as the profs script etc
 
 # Results
 
-```{r, echo = F}
+Our overall model performance (measured by F1 score) was much improved from the standard elastic net regression. Figure 1 shows a box plot of the difference in F1 score for each cell type, where each box represents the 10 replications. Thus, values above zero mean our model F1 score was higher than the elastic net model. For Mesothelial cells, Myofibroblasts, and pDCs, our model always scored higher, and by a large margin for Mesothelial cells and pDCs. Our model was also better for B_Cells, although not by as much. Even with the extra tuning, our model still struggled with Smooth Muscle cells, and ended up showing performance similar to Elastic net. Although the median is below zero, the average is slightly positive (so favouring our model).
+
+```{r, echo = F, message=FALSE, warning=F}
 compF1 <- fread("F1.binary.csv")
 compF1[,V1 := NULL]
 F1 <- fread("F1Xgboost_tuned.csv")
@@ -41,12 +45,13 @@ ggplot(diff2, aes(x = Celltype, y = F1_Difference, fill = Celltype))+
   theme(legend.position = "n")
 ```
 
-
+Looking at average F1 scores across all celltypes, our model performed significantly better than the elastic net (Figure 2; V = 68, p < 0.0001, Wilcoxon paired test). Average F1 score for elastic net was 0.980, and for XGBoost was 0.985. Although this is not a huge improvement, because the F1 scores were already very good, even a small improvement could be meaningful. 
 
 ```{r, echo = F,message=FALSE, warning=FALSE}
 enet <- melt(compF1)
 xgb <- melt(F1)
 compdat <- data.table(Enet = enet$value, XGboost = xgb$value)
+#colMeans(compdat)
 compdat <- melt(compdat)
 setnames(compdat,c("Model","F1"))
 ggplot(compdat, aes(x = Model, y = F1, fill = Model))+
@@ -55,7 +60,9 @@ ggplot(compdat, aes(x = Model, y = F1, fill = Model))+
   theme(legend.position = "n")
 ```
 
-```{r}
+When looking at mean F1 scores, our model was able to outperform the elastic net model for all celltypes. Table 1 below shows the mean F1 score for each celltype, and the p-value from a paired Wilcox test. Using an $\alpha = 0.05$ level, our model performed significantly better than the elastic net model for all cells except the smooth muscle cells, which had no detectable difference. 
+
+```{r, echo=FALSE, warning=F}
 tab1 <- data.table(Celltype = enet$variable,
                    el_net = enet$value,
                    xgboost = xgb$value)
@@ -70,6 +77,6 @@ for(cell in tab2$Celltype){
 
 knitr::kable(tab2,digits = 4)
 
-compdat <- data.table(Enet = enet$value, XGboost = xgb$value)
-wilcox.test(compdat$Enet,compdat$XGboost,paired = T)
+# compdat <- data.table(Enet = enet$value, XGboost = xgb$value)
+# wilcox.test(compdat$Enet,compdat$XGboost,paired = T)
 ```
