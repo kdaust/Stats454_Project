@@ -14,9 +14,15 @@ library(foreach)
 
 # Introduction
 
+Recent advances in genetic analysis allow us to sequence the DNA at a single cellular level. As such, it has become increasingly important to develop analysis methods for making sense of the huge amounts of data that result from these procedures. Machine learning has become a common method for classifying samples into different cell types. A typical machine learning algorithm for this problem is to use elastic net regression to classify each sample. While this technique produces reasonably good accuracy, we think it is possible to do better overall. In this project, we will try different machine learning algorithms, and will attempt to beat the accuracy of the elastic net regression.
+
 # Methods
 
 ## Hyperparameter Tuning
+
+We created a separate XGBoost model for each cell type, and then used the prediction with the highest probability to classify the sample. Because each cell type might respond differently to classification, we decided to tune the hyperparameters of each model separately. First, we tuned the number of iterations for each model, using a built in cross-validation function in the XGBoost package. Optimal numbers of iterations ranged from 27 to 136 depending on the celltype. Using the optimal number of iterations, we then used 3-fold grid-search cross-validation to tune the maximum tree depth and the minimum child-weight to split. For all of the celltypes, the optimals values were depth = 4 and min_child_weight = 1. Finally, we tuned the parameter gamma, which determines how much improvement is required to make a new split. No models showed any improvement with increased gamma, so we kept it at zero. 
+
+The tuned models performed well for all but the Smooth_Muscle_Cells, so we did more tuning for this model. Initially we had used a fairly fast learning rate of 0.1 for all models; this means the models train quickly, but are more likely to overfit. To try and improve the performance of this model, we decreased the learning rate to 0.08. This resulted in an increased number of iterations with the optimum being at 250, and a slightly decreased optimal tree depth. Model performance was improved slightly, but was still not as good as we were hoping. We thus tried adjusting some more parameters: eta (controls learning rate), subsample, and subsample by tree. We again used gridsearch to tune these parameters, and found optimal performance with eta = 0.8 and both subsamples at 0.9.
 
 # Results
 
